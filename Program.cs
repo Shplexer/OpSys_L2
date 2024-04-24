@@ -8,10 +8,10 @@ namespace OpSys_L2 {
         const string empty = "empty";
         static void Main() {
 
-            List<(object, object)> A = [(22, 23), (23, 24), (24, 25), (25, eof)];
-            List<(object, object)> B = [(20, 21), (21, 6), (6, 7), (7, eof)];
-            List<(object, object)> C = [(10, 11), (11, 6), (6, 7), (7, eof)];
-            List<(object, object)> D = [(5, 13), (13, 29), (29, 28), (28, eof)];
+            List<(object, object)> A =   [(22, 23), (23, 24), (24, 25), (25, eof)];
+            List<(object, object)> B =   [(20, 21), (21, 6), (6, 7), (7, eof)];
+            List<(object, object)> C =   [(10, 11), (11, 6), (6, 7), (7, eof)];
+            List<(object, object)> D =   [(5, 13), (13, 29), (29, 28), (28, eof)];
             List<(object, object)> FAT = [
                 (0, empty),  (1, empty),  (2, empty),    (3, bad),    (4, empty),
                 (5, 13),     (6, 7),      (7, eof),      (8, empty),  (9, empty),
@@ -35,8 +35,10 @@ namespace OpSys_L2 {
             PrintIntersections(intersections);
             PrintNotEndingFiles(notEndingFiles);
 
-            ReplaceIntersectingValues(A, B, C, D, intersections, ref emptyClusters);
-            var newFiles = CreateNewFiles(lostClusters);
+            ReplaceIntersectingValues(ref A, ref B, ref C, ref D, intersections, ref emptyClusters);
+            var newFiles = CreateNewFilesFromClusters(lostClusters);
+
+            Console.WriteLine("==============================");
             Console.WriteLine("Исправленная файловая система:");
             PrintClusters(A, "A:");
             PrintClusters(B, "B:");
@@ -52,109 +54,87 @@ namespace OpSys_L2 {
                 Console.WriteLine($"Новый файл {i + 1}:\n{string.Join("\n", tuples)}");
             }
         }
-        public static void ReplaceIntersectingValues(
-            List<(object, object)> A,
-            List<(object, object)> B,
-            List<(object, object)> C,
-            List<(object, object)> D,
+        private static void ReplaceIntersectingValues(
+            ref List<(object, object)> A,
+            ref List<(object, object)> B,
+            ref List<(object, object)> C,
+            ref List<(object, object)> D,
             List<(object Value, List<string> Lists)> intersections,
             ref List<(object, object)> emptyClusters) {
-            // Inside the ReplaceIntersectingValues method
-            foreach (var intersection in intersections) {
-                bool isFirst = true;
-                foreach (var listName in intersection.Lists) {
-                    if (isFirst) {
-                        isFirst = false;
-                        continue;
-                    }
 
-                    var listToReplace = GetListByName(listName, A, B, C, D);
-
-                    // Find the indexes of the intersecting tuples
-                    var indexesToReplace = listToReplace
-                        .Select((value, index) => new { value, index })
-                        .Where(pair => pair.value.Equals(intersection.Value))
-                        .Select(pair => pair.index)
-                        .ToList();
-
-                    foreach (var index in indexesToReplace) {
-                        if (emptyClusters.Count < 2) {
-                            throw new InvalidOperationException("Not enough empty clusters to replace intersections.");
-                        }
-
-                        // Take 2 empty clusters to form a new tuple, unless it's the last tuple
-                        var newTuple = index == listToReplace.Count - 1
-                            ? (emptyClusters[0].Item1, "eof") // Ensure the last tuple ends with eof
-                            : (emptyClusters[0].Item1, emptyClusters[1].Item1);
-
-                        listToReplace[index] = newTuple;
-
-                        // Remove the used empty clusters
-                        emptyClusters.RemoveAt(1);
-                        emptyClusters.RemoveAt(0);
-                    }
-
-                    // Ensure the last tuple in the list ends with eof
-                    if (!listToReplace.Any() || !listToReplace.Last().Item2.Equals("eof")) {
-                        if (emptyClusters.Count != 0) {
-                            var lastTuple = listToReplace.LastOrDefault();
-                            var newLastTuple = (lastTuple.Item1, "eof");
-                            listToReplace[listToReplace.Count - 1] = newLastTuple;
+            // Iterate over the intersections
+            foreach (var (Value, Lists) in intersections) {
+                // Skip the first list to leave its values unchanged
+                for (int i = 1; i < Lists.Count; i++) {
+                    var listToChange = GetListByName(Lists[i], ref A, ref B, ref C, ref D);
+                    var index = listToChange.FindIndex(x => x.Equals(Value));
+                    if (index != -1 && emptyClusters.Count >= 2) {
+                        // Take two empty clusters to form the new unique pair
+                        var newStart = emptyClusters[0].Item1;
+                        var newEnd = emptyClusters[1].Item1;
+                        
+                        if (index == listToChange.Count - 1) {
+                            listToChange[index] = (newStart, eof);
                         }
                         else {
-                            throw new InvalidOperationException("Not enough empty clusters to ensure the list ends with eof.");
+                            listToChange[index] = (newStart, newEnd);
+                            listToChange[index - 1] = (listToChange[index - 1].Item1, newEnd);
                         }
+                        // Replace intersecting value with the new unique value
+
+                        // Update emptyClusters by removing the used clusters and changing 'empty' to the next cluster
+                        emptyClusters.RemoveAt(0);
+                        emptyClusters[0] = (emptyClusters[0].Item1, eof);
                     }
                 }
             }
-
         }
 
         private static List<(object, object)> GetListByName(
             string name,
-            List<(object, object)> A,
-            List<(object, object)> B,
-            List<(object, object)> C,
-            List<(object, object)> D) {
+            ref List<(object, object)> A,
+            ref List<(object, object)> B,
+            ref List<(object, object)> C,
+            ref List<(object, object)> D) {
+
             switch (name) {
                 case "A": return A;
                 case "B": return B;
                 case "C": return C;
                 case "D": return D;
-                default: throw new ArgumentException("Invalid list name");
+                default: throw new ArgumentException("Invalid list name", nameof(name));
             }
         }
 
-        public static List<List<(object, object)>> CreateNewFiles(List<(object, object)> edges) {
-            var allSequences = new List<List<(object, object)>>();
-            var remainingEdges = new List<(object, object)>(edges);
+        public static List<List<(object, object)>> CreateNewFilesFromClusters(List<(object, object)> clusters) {
+            var newFiles = new List<List<(object, object)>>();
+            var remainingClusters = new List<(object, object)>(clusters);
 
-            var startingPoints = edges.Select(e => e.Item1).Distinct()
-                .Except(edges.Select(e => e.Item2).Distinct())
+            var startingPoints = clusters.Select(e => e.Item1)
+                .Except(clusters.Select(e => e.Item2))
                 .ToList();
 
             foreach (var start in startingPoints) {
                 var current = start;
                 var sequence = new List<(object, object)>();
-                var next = remainingEdges.FirstOrDefault(e => e.Item1.Equals(current));
+                var next = remainingClusters.FirstOrDefault(e => e.Item1.Equals(current));
 
                 while (!next.Equals(default((object, object)))) {
                     sequence.Add(next);
-                    remainingEdges.Remove(next);
+                    remainingClusters.Remove(next);
                     current = next.Item2;
-                    next = remainingEdges.FirstOrDefault(e => e.Item1.Equals(current));
+                    next = remainingClusters.FirstOrDefault(e => e.Item1.Equals(current));
                 }
 
                 if (sequence.Count != 0) {
-                    allSequences.Add(sequence);
+                    newFiles.Add(sequence);
                 }
             }
 
-            // Include edges leading to "eof"
-            allSequences.AddRange(remainingEdges.Where(e => e.Item2.Equals("eof"))
+            newFiles.AddRange(remainingClusters.Where(e => e.Item2.Equals("eof"))
                 .Select(e => new List<(object, object)> { e }));
 
-            return allSequences;
+            return newFiles;
         }
         private static bool ListContainsEof(List<(object, object)> list) {
             return list.Any(item => item.Item2?.ToString() == eof);
@@ -207,7 +187,7 @@ namespace OpSys_L2 {
 
                 foreach (var (Value, Lists) in commonValues) {
                     var (Item1, Item2) = ((object, object))Value;
-                    Console.WriteLine($"[{Item1}] -> [{Item2}] в файлах: {string.Join(", ", Lists)}");
+                    Console.WriteLine($"[{Item1}] => [{Item2}] в файлах: {string.Join(", ", Lists)}");
                 }
             }
         }
@@ -242,7 +222,7 @@ namespace OpSys_L2 {
                 Console.WriteLine(message);
                 int lostFileCount = 0;
                 foreach (var (ClusterIndex, ClusterValue) in clusters) {
-                    Console.WriteLine($"[{ClusterIndex}] -> [{ClusterValue}]");
+                    Console.WriteLine($"[{ClusterIndex}] => [{ClusterValue}]");
                     if (ClusterValue.ToString() == eof) {
                         lostFileCount++;
                     }
